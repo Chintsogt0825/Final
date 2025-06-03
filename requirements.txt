@@ -1,0 +1,5 @@
+requests
+zenoh
+dash
+dash-bootstrap-components
+plotly
