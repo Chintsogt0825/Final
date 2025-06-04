@@ -1,75 +1,59 @@
 import pandas as pd
-import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
+from datetime import datetime
 import numpy as np
-import sys
 
-# Step 1: Load CSV
-try:
-    df = pd.read_csv("crypto_prices.csv")
-except FileNotFoundError:
-    print("[ERROR] crypto_prices.csv not found. Please run the publisher first.")
-    sys.exit()
+CSV_FILE = "crypto_prices.csv"
 
-# Step 2: Convert timestamp to numerical value
-df["timestamp"] = pd.to_datetime(df["timestamp"])
-df["timestamp_ordinal"] = df["timestamp"].apply(lambda x: x.toordinal())
+def predict_next_price(crypto_name):
+    try:
+        # Load the CSV with known headers
+        df = pd.read_csv(CSV_FILE, names=[
+            'timestamp', 'bitcoin_usd', 'ethereum_usd', 'dogecoin_usd', 'solana_usd'
+        ], skiprows=1)  # Skip the header row once manually
 
-# Step 3: Ask user which coin
-available_coins = [col for col in df.columns if col not in ["timestamp", "timestamp_ordinal"]]
-print("Available coins:", available_coins)
-selected_coin = input("Enter coin to analyze (e.g., bitcoin_usd): ").strip()
+        # Drop completely empty rows
+        df = df.dropna()
 
-if selected_coin not in df.columns:
-    print("[ERROR] Invalid coin name.")
-    sys.exit()
+        # Fix timestamps — handle both formats
+        df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce', infer_datetime_format=True)
+        df = df.dropna(subset=['timestamp'])
 
-# Step 4: Plot historical trend
-plt.figure(figsize=(10, 5))
-plt.plot(df["timestamp"], df[selected_coin], label=selected_coin.upper(), color="blue", marker='o')
-plt.title(f"{selected_coin.upper()} Price Trend")
-plt.xlabel("Time")
-plt.ylabel("Price ($)")
-plt.grid(True)
-plt.legend()
-plt.tight_layout()
-plt.show()
+        # Fix column types (some rows have dogecoin/solana flipped)
+        df = df[
+            (df['bitcoin_usd'] > 1000) &  # Bitcoin price must be realistic
+            (df['ethereum_usd'] > 100) &
+            (df['solana_usd'] > 1) & 
+            (df['dogecoin_usd'] < 1)  # Doge should be below 1
+        ]
 
-# Step 5: Train a simple Linear Regression model
-X = df[["timestamp_ordinal"]]
-y = df[[selected_coin]]
+        # Check if crypto column exists
+        if f"{crypto_name}_usd" not in df.columns:
+            print(f"[PREDICT WARNING] {crypto_name}_usd column not found.")
+            return None
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        # Prepare data for training
+        df['timestamp_ordinal'] = df['timestamp'].map(datetime.toordinal)
+        X = df[['timestamp_ordinal']]
+        y = df[f"{crypto_name}_usd"]
 
-model = LinearRegression()
-model.fit(X_train, y_train)
+        if len(X) < 2:
+            print(f"[PREDICT WARNING] Not enough clean data for {crypto_name}.")
+            return None
 
-# Step 6: Predict next 5 days
-future_days = 5
-last_day = df["timestamp"].max()
-future_dates = pd.date_range(start=last_day + pd.Timedelta(days=1), periods=future_days)
+        model = LinearRegression()
+        model.fit(X, y)
 
-future_ordinals = np.array([d.toordinal() for d in future_dates]).reshape(-1, 1)
-predictions = model.predict(future_ordinals)
+        next_time = datetime.now().toordinal() + 1
+        pred = model.predict([[next_time]])[0]
 
-# Step 7: Plot Predictions
-plt.figure(figsize=(10, 5))
-plt.plot(df["timestamp"], df[selected_coin], label="Historical", marker='o')
-plt.plot(future_dates, predictions, label="Prediction", linestyle='--', marker='x', color='red')
-plt.title(f"{selected_coin.upper()} Price Forecast (Next {future_days} Days)")
-plt.xlabel("Time")
-plt.ylabel("Price ($)")
-plt.grid(True)
-plt.legend()
-plt.tight_layout()
-plt.show()
+        return round(pred, 2)
 
-# Step 8: Print forecast table
-forecast_df = pd.DataFrame({
-    "Date": future_dates.strftime("%Y-%m-%d"),
-    "Predicted Price ($)": predictions.flatten()
-})
-print("\n🔮 Predicted Prices:")
-print(forecast_df.to_string(index=False))
+    except Exception as e:
+        print(f"[PREDICT ERROR] {e}")
+        return None
+
+if __name__ == "__main__":
+    for crypto in ["bitcoin", "ethereum", "solana", "dogecoin"]:
+        pred = predict_next_price(crypto)
+        print(f"{crypto} predicted price: ${pred}")
