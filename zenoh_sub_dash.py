@@ -154,6 +154,15 @@ app.layout = html.Div([
                         className="mb-3"
                     ),
                     
+                    html.Label("Select History Length (Data Points):", className="fw-bold mb-2"),
+                    dcc.Slider(
+                        id='history-length',
+                        min=10, max=100, step=10,
+                        value=20,
+                        marks={i: str(i) for i in range(10, 110, 10)},
+                        className="mb-3"
+                    ),
+                    
                     html.Div(id='current-price-card', className="card mb-3 border-primary"),
                     html.Div(id='prediction-summary-card', className="card mb-3 border-warning"),
                     
@@ -227,14 +236,15 @@ app.layout = html.Div([
      Output('prediction-table', 'data'),
      Output('news-section', 'children')],
     [Input('interval', 'n_intervals'),
-     Input('crypto-select', 'value')]
+     Input('crypto-select', 'value'),
+     Input('history-length', 'value')]
 )
-def update_dashboard(n, selected_crypto):
+def update_dashboard(n, selected_crypto, history_length):
     if selected_crypto not in price_history:
         return go.Figure(), go.Figure(), "", "", go.Figure(), [], []
 
-    # Get historical prices
-    prices = list(price_history[selected_crypto])
+    # Get historical prices (limited to selected history length)
+    prices = list(price_history[selected_crypto])[-history_length:]
     timestamps = [i for i in range(len(prices))]
     
     # Create price history chart
@@ -247,7 +257,7 @@ def update_dashboard(n, selected_crypto):
         line=dict(color='#1f77b4', width=2)
     ))
     history_fig.update_layout(
-        title=f"{selected_crypto.title()} Price History",
+        title=f"{selected_crypto.title()} Price History (Last {history_length} Points)",
         xaxis_title="Time",
         yaxis_title="Price (USD)",
         hovermode="x unified",
